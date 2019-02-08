@@ -1,7 +1,9 @@
 import os
 import itertools
+import unittest
+from unittest import mock
 from tempfile import NamedTemporaryFile
-from .tifffile import imread, imsave
+from .tifffile import imread, imsave, TiffFile
 
 import numpy as np
 try:
@@ -36,6 +38,28 @@ def test_extension():
     from .tifffile.tifffile import decode_packbits
     import types
     assert isinstance(decode_packbits, types.BuiltinFunctionType), type(decode_packbits)
+
+
+class TestTiffFile(unittest.TestCase):
+
+  @mock.patch('skimage.external.tifffile.tifffile.read_micromanager_metadata') 
+  @mock.patch('skimage.external.tifffile.TiffFile.is_micromanager')
+  def test_fail_gracefully_bad_mm(self, mock_is_mm, mock_read_mm):
+
+    mock_read_mm.side_effect = ValueError('invalid MicroManager index_header')
+    mock_is_mm.return_value = True
+
+    temp_data = np.random.rand(10, 10)
+
+    f = NamedTemporaryFile(suffix='.tif')
+    fname = f.name
+    f.close()
+    imsave(fname, temp_data)
+
+    try:
+      TiffFile(f.name)
+    except ValueError:
+      self.fail("TiffFile raised ValueError unexpectedly")
 
 
 class TestSave:
