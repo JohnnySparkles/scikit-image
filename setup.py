@@ -16,7 +16,12 @@ MAINTAINER = 'Stefan van der Walt'
 MAINTAINER_EMAIL = 'stefan@sun.ac.za'
 URL = 'https://scikit-image.org'
 LICENSE = 'Modified BSD'
-DOWNLOAD_URL = 'https://github.com/scikit-image/scikit-image'
+DOWNLOAD_URL = 'https://scikit-image.org/docs/stable/install.html'
+PROJECT_URLS = {
+    "Bug Tracker": 'https://github.com/scikit-image/scikit-image/issues',
+    "Documentation": 'https://scikit-image.org/docs/stable/',
+    "Source Code": 'https://github.com/scikit-image/scikit-image'
+}
 
 import os
 import sys
@@ -28,14 +33,12 @@ from distutils.command.build_py import build_py
 from distutils.command.sdist import sdist
 from distutils.errors import CompileError, LinkError
 
-from numpy.distutils.command.build_ext import build_ext
 
-
-if sys.version_info < (3, 5):
+if sys.version_info < (3, 6):
 
     error = """Python {py} detected.
 
-scikit-image 0.15+ support only Python 3.5 and above.
+scikit-image 0.16+ supports only Python 3.6 and above.
 
 For Python 2.7, please install the 0.14.x Long Term Support using:
 
@@ -64,46 +67,51 @@ code = """#include <omp.h>
 int main(int argc, char** argv) { return(0); }"""
 
 
-class ConditionalOpenMP(build_ext):
+def openmp_build_ext():
+    from numpy.distutils.command.build_ext import build_ext
 
-    def can_compile_link(self):
+    class ConditionalOpenMP(build_ext):
 
-        cc = self.compiler
-        fname = 'test.c'
-        cwd = os.getcwd()
-        tmpdir = tempfile.mkdtemp()
+        def can_compile_link(self):
 
-        try:
-            os.chdir(tmpdir)
-            with open(fname, 'wt') as fobj:
-                fobj.write(code)
+            cc = self.compiler
+            fname = 'test.c'
+            cwd = os.getcwd()
+            tmpdir = tempfile.mkdtemp()
+
             try:
-                objects = cc.compile([fname],
-                                     extra_postargs=compile_flags)
-            except CompileError:
-                return False
-            try:
-                # Link shared lib rather then executable to avoid
-                # http://bugs.python.org/issue4431 with MSVC 10+
-                cc.link_shared_lib(objects, "testlib",
-                                   extra_postargs=link_flags)
-            except (LinkError, TypeError):
-                return False
-        finally:
-            os.chdir(cwd)
-            shutil.rmtree(tmpdir)
-        return True
+                os.chdir(tmpdir)
+                with open(fname, 'wt') as fobj:
+                    fobj.write(code)
+                try:
+                    objects = cc.compile([fname],
+                                         extra_postargs=compile_flags)
+                except CompileError:
+                    return False
+                try:
+                    # Link shared lib rather then executable to avoid
+                    # http://bugs.python.org/issue4431 with MSVC 10+
+                    cc.link_shared_lib(objects, "testlib",
+                                       extra_postargs=link_flags)
+                except (LinkError, TypeError):
+                    return False
+            finally:
+                os.chdir(cwd)
+                shutil.rmtree(tmpdir)
+            return True
 
-    def build_extensions(self):
-        """ Hook into extension building to check compiler flags """
+        def build_extensions(self):
+            """ Hook into extension building to check compiler flags """
 
-        if self.can_compile_link():
+            if self.can_compile_link():
 
-            for ext in self.extensions:
-                ext.extra_compile_args += compile_flags
-                ext.extra_link_args += link_flags
+                for ext in self.extensions:
+                    ext.extra_compile_args += compile_flags
+                    ext.extra_link_args += link_flags
 
-        build_ext.build_extensions(self)
+            build_ext.build_extensions(self)
+
+    return ConditionalOpenMP
 
 
 with open('skimage/__init__.py') as fid:
@@ -112,8 +120,22 @@ with open('skimage/__init__.py') as fid:
             VERSION = line.strip().split()[-1][1:-1]
             break
 
-with open('requirements/default.txt') as fid:
-    INSTALL_REQUIRES = [l.strip() for l in fid.readlines() if l]
+
+def parse_requirements_file(filename):
+    with open(filename) as fid:
+        requires = [l.strip() for l in fid.readlines() if l]
+
+    return requires
+
+
+INSTALL_REQUIRES = parse_requirements_file('requirements/default.txt')
+# The `requirements/extras.txt` file is explicitely omitted because
+# it contains requirements that do not have wheels uploaded to pip
+# for the platforms we wish to support.
+extras_require = {
+    dep : parse_requirements_file('requirements/' + dep + '.txt')
+    for dep in ['docs', 'optional', 'test']
+}
 
 # requirements for those browsing PyPI
 REQUIRES = [r.replace('>=', ' (>= ') + ')' for r in INSTALL_REQUIRES]
@@ -184,6 +206,7 @@ if __name__ == "__main__":
         url=URL,
         license=LICENSE,
         download_url=DOWNLOAD_URL,
+        project_urls=PROJECT_URLS,
         version=VERSION,
 
         classifiers=[
@@ -195,7 +218,6 @@ if __name__ == "__main__":
             'Programming Language :: C',
             'Programming Language :: Python',
             'Programming Language :: Python :: 3',
-            'Programming Language :: Python :: 3.5',
             'Programming Language :: Python :: 3.6',
             'Programming Language :: Python :: 3.7',
             'Programming Language :: Python :: 3 :: Only',
@@ -207,7 +229,8 @@ if __name__ == "__main__":
         ],
         install_requires=INSTALL_REQUIRES,
         requires=REQUIRES,
-        python_requires='>=3.5',
+        extras_require=extras_require,
+        python_requires='>=3.6',
         packages=setuptools.find_packages(exclude=['doc', 'benchmarks']),
         include_package_data=True,
         zip_safe=False,  # the package can run out of an .egg file
@@ -217,7 +240,7 @@ if __name__ == "__main__":
         },
 
         cmdclass={'build_py': build_py,
-                  'build_ext': ConditionalOpenMP,
+                  'build_ext': openmp_build_ext(),
                   'sdist': sdist},
         **extra
     )

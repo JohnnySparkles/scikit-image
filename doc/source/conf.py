@@ -15,7 +15,9 @@ import sys
 import os
 import skimage
 from sphinx_gallery.sorting import ExplicitOrder
-
+from warnings import filterwarnings
+filterwarnings('ignore', message="Matplotlib is currently using agg",
+               category=UserWarning)
 
 # If extensions (or modules to document with autodoc) are in another directory,
 # add these directories to sys.path here. If the directory is relative to the
@@ -63,7 +65,8 @@ sphinx_gallery_conf = {
         '../examples/filters',
         '../examples/features_detection',
         '../examples/segmentation',
-        '../examples/xx_applications',
+        '../examples/applications',
+        '../examples/developers',
     ]),
 }
 
@@ -135,7 +138,7 @@ release = version
 exclude_trees = []
 
 # The reST default role (used for this markup: `text`) to use for all documents.
-#default_role = None
+default_role = "autolink"
 
 # If true, '()' will be appended to :func: etc. cross-reference text.
 #add_function_parentheses = True
